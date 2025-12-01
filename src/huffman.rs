@@ -1,3 +1,4 @@
+use bitvec::prelude::*;
 use std::collections::{BinaryHeap, HashMap};
 
 #[derive(Debug)]
@@ -6,7 +7,11 @@ pub enum HuffmanNode<T> {
     LeafNode(f64, T),
 }
 
-impl<T: Eq + Ord + std::hash::Hash> HuffmanNode<T> {
+pub trait Encodable: Eq + Ord + std::hash::Hash {}
+
+impl<T: Eq + Ord + std::hash::Hash> Encodable for T {}
+
+impl<T: Encodable> HuffmanNode<T> {
     pub fn weight(&self) -> f64 {
         match self {
             HuffmanNode::InternalNode(w, _) => *w,
@@ -15,19 +20,19 @@ impl<T: Eq + Ord + std::hash::Hash> HuffmanNode<T> {
     }
 }
 
-impl<T: Eq + Ord + std::hash::Hash> Ord for HuffmanNode<T> {
+impl<T: Encodable> Ord for HuffmanNode<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.weight().total_cmp(&other.weight())
     }
 }
 
-impl<T: Eq + Ord + std::hash::Hash> PartialOrd for HuffmanNode<T> {
+impl<T: Encodable> PartialOrd for HuffmanNode<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: Eq + Ord + std::hash::Hash> PartialEq for HuffmanNode<T> {
+impl<T: Encodable> PartialEq for HuffmanNode<T> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::InternalNode(l0, l1), Self::InternalNode(r0, r1)) => l0 == r0 && l1 == r1,
@@ -37,9 +42,9 @@ impl<T: Eq + Ord + std::hash::Hash> PartialEq for HuffmanNode<T> {
     }
 }
 
-impl<T: Eq + Ord + std::hash::Hash> Eq for HuffmanNode<T> {}
+impl<T: Encodable> Eq for HuffmanNode<T> {}
 
-fn huffman_treeify<T: Eq + Ord + std::hash::Hash>(leaves: Vec<HuffmanNode<T>>) -> HuffmanNode<T> {
+fn huffman_treeify<T: Encodable>(leaves: Vec<HuffmanNode<T>>) -> HuffmanNode<T> {
     let mut pq = BinaryHeap::from(leaves);
 
     while pq.len() > 1 {
@@ -55,41 +60,42 @@ fn huffman_treeify<T: Eq + Ord + std::hash::Hash>(leaves: Vec<HuffmanNode<T>>) -
     pq.pop().unwrap()
 }
 
-pub fn get_encoding_map<T: Eq + Ord + std::hash::Hash>(
-    ht_root: HuffmanNode<T>,
-) -> HashMap<T, String> {
+pub fn get_encoding_map<T: Encodable>(ht_root: HuffmanNode<T>) -> HashMap<T, BitVec> {
     let mut encoding = HashMap::new();
-    _get_encoding_map_acc(ht_root, String::new(), &mut encoding);
+    _get_encoding_map_acc(ht_root, &BitVec::new(), &mut encoding);
 
     encoding
 }
 
-fn _get_encoding_map_acc<T: Eq + Ord + std::hash::Hash>(
+fn _get_encoding_map_acc<T: Encodable>(
     ht_node: HuffmanNode<T>,
-    path: String,
-    encoding: &mut HashMap<T, String>,
+    path: &BitVec,
+    encoding: &mut HashMap<T, BitVec>,
 ) {
     match ht_node {
         HuffmanNode::InternalNode(_, (left, right)) => {
-            _get_encoding_map_acc(*left, path.clone() + "0", encoding);
-            _get_encoding_map_acc(*right, path + "1", encoding);
+            let mut left_path = path.clone();
+            left_path.push(false);
+            let mut right_path = path.clone();
+            right_path.push(true);
+            _get_encoding_map_acc(*left, &mut left_path, encoding);
+            _get_encoding_map_acc(*right, &mut right_path, encoding);
         }
         HuffmanNode::LeafNode(_, item) => {
-            encoding.insert(item, path);
+            encoding.insert(item, path.clone());
         }
     }
 }
 
-pub fn decode<T: Eq + Ord + std::hash::Hash>(coding: &[char], ht_node: HuffmanNode<T>) -> T {
+pub fn decode<T: Encodable>(coding: &BitSlice, ht_node: HuffmanNode<T>) -> T {
     if coding.len() > 1 {
         let (l, r) = match ht_node {
             HuffmanNode::InternalNode(_, (l, r)) => (*l, *r),
             _ => panic!("decode failure"),
         };
         match coding[0] {
-            '0' => decode(&coding[1..], l),
-            '1' => decode(&coding[1..], r),
-            _ => unreachable!(),
+            false => decode(&coding[1..], l),
+            true => decode(&coding[1..], r),
         }
     } else {
         match ht_node {
@@ -99,10 +105,8 @@ pub fn decode<T: Eq + Ord + std::hash::Hash>(coding: &[char], ht_node: HuffmanNo
     }
 }
 
-pub fn canonicalize<T: Eq + Ord + Clone + std::hash::Hash>(
-    ht_map: &HashMap<T, String>,
-) -> HashMap<T, String> {
-    let mut sorted = ht_map.into_iter().collect::<Vec<(&T, &String)>>();
+pub fn canonicalize<T: Encodable + Clone>(ht_map: &HashMap<T, BitVec>) -> HashMap<T, BitVec> {
+    let mut sorted = ht_map.into_iter().collect::<Vec<(&T, &BitVec)>>();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
 
     let max_length = sorted.last().unwrap().1.len();
@@ -148,10 +152,9 @@ pub fn canonicalize<T: Eq + Ord + Clone + std::hash::Hash>(
     for p in sorted {
         let len = ht_map[p.0].len();
         println!("{}", &len);
-        canonical_map.insert(
-            p.0.clone(),
-            format!("{:01$b}", next_code[&len], len).to_string(),
-        );
+        let mut coded = bitvec![0; len];
+        coded.store(next_code[&len]);
+        canonical_map.insert(p.0.clone(), coded);
         next_code
             .entry(len)
             .and_modify(|counter| *counter += 1)

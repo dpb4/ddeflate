@@ -1,19 +1,19 @@
+use bitvec::prelude::*;
 use std::collections::HashMap;
-
 mod huffman;
 
 fn main() {
     println!("Hello, world!");
 
     let initial_map = HashMap::from([
-        ("A".to_string(), "010".to_string()),
-        ("B".to_string(), "011".to_string()),
-        ("C".to_string(), "100".to_string()),
-        ("D".to_string(), "101".to_string()),
-        ("E".to_string(), "110".to_string()),
-        ("F".to_string(), "00".to_string()),
-        ("G".to_string(), "1110".to_string()),
-        ("H".to_string(), "1111".to_string()),
+        ("A".to_string(), bitvec![0, 1, 0]),
+        ("B".to_string(), bitvec![0, 1, 1]),
+        ("C".to_string(), bitvec![1, 0, 0]),
+        ("D".to_string(), bitvec![1, 0, 1]),
+        ("E".to_string(), bitvec![1, 1, 0]),
+        ("F".to_string(), bitvec![0, 0]),
+        ("G".to_string(), bitvec![1, 1, 1, 0]),
+        ("H".to_string(), bitvec![1, 1, 1, 1]),
     ]);
 
     dbg!(huffman::canonicalize(&initial_map));
